@@ -6,16 +6,17 @@ import pybullet_envs  # noqa F401
 # import pybulletgym  # noqa F401 register PyBullet enviroments with open ai gym
 import torch
 
+from MDBSenv import MudbusEnv
 from algos import DDPG, PPO, TD3
 from utils import memory
 
 
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, env_name, seed, eval_episodes=10, test=False):
+def eval_policy(policy, env, seed, eval_episodes=10, test=False):
     policy.eval_mode()
     avg_reward = 0.
-    env = gym.make(env_name)
+    #env = MudbusEnv('/home/user/Projects/OTALA-/modbus_clever_office_131-218_full_bad.pcap', 3000, '192.168.12.131', '192.168.252.218', 6)
     env.seed(seed + 100)
 
     for _ in range(eval_episodes):
@@ -47,7 +48,7 @@ def main():
     # OpenAI gym environment name
     parser.add_argument("--env", default="HopperBulletEnv-v0")
     # Sets Gym, PyTorch and Numpy seeds
-    parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--seed", default=12456, type=int)
     # Time steps initial random policy is used
     parser.add_argument("--start_timesteps", default=1e4, type=int)
     # How often (time steps) we evaluate
@@ -57,15 +58,15 @@ def main():
     # Std of Gaussian exploration noise
     parser.add_argument("--expl_noise", default=0.25)
     # Batch size for both actor and critic
-    parser.add_argument("--batch_size", default=100, type=int)
+    parser.add_argument("--batch_size", default=40, type=int)
     # Memory size
-    parser.add_argument("--memory_size", default=1e6, type=int)
+    parser.add_argument("--memory_size", default=20, type=int)
     # Learning rate
-    parser.add_argument("--lr", default=3e-4, type=float)
+    parser.add_argument("--lr", default=1e-2, type=float)
     # Discount factor
     parser.add_argument("--discount", default=0.99)
     # Target network update rate
-    parser.add_argument("--tau", default=0.005)
+    parser.add_argument("--tau", default=0.1)
     # Noise added to target policy during critic update
     parser.add_argument("--policy_noise", default=0.25)
     # Range to clip target policy noise
@@ -73,7 +74,7 @@ def main():
     # Frequency of delayed policy updates
     parser.add_argument("--policy_freq", default=2, type=int)
     # Model width
-    parser.add_argument("--hidden_size", default=256, type=int)
+    parser.add_argument("--hidden_size", default=128, type=int)
     # Use recurrent policies or not
     parser.add_argument("--recurrent", action="store_true")
     # Save model and optimizer parameters
@@ -95,15 +96,15 @@ def main():
     if args.save_model and not os.path.exists("./models"):
         os.makedirs("./models")
 
-    env = gym.make(args.env)
+    env = MudbusEnv('/home/user/Projects/OTALA-/modbus_clever_office_131-218_full_bad.pcap', 3000, '192.168.12.131', '192.168.252.218', 6)
 
     # Set seeds
     env.seed(args.seed)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
+    state_dim = 1
+    action_dim = 13
     max_action = float(env.action_space.high[0])
 
     # TODO: Add this to parameters
@@ -146,7 +147,7 @@ def main():
         policy.load(f"{policy_file}")
 
     if args.test:
-        eval_policy(policy, args.env, args.seed, eval_episodes=10, test=True)
+        eval_policy(policy, env, args.seed, eval_episodes=10, test=True)
         return
 
     replay_buffer = memory.ReplayBuffer(
@@ -154,7 +155,7 @@ def main():
         args.memory_size, recurrent=recurrent_actor)
 
     # Evaluate untrained policy
-    evaluations = [eval_policy(policy, args.env, args.seed)]
+    evaluations = [eval_policy(policy, env, args.seed)]
 
     best_reward = evaluations[-1]
 
@@ -183,7 +184,7 @@ def main():
         next_state, reward, done, _ = env.step(action)
 
         done_bool = float(
-            done) if episode_timesteps < env._max_episode_steps else 0
+            done) if episode_timesteps < 3000 else 0
 
         # Store data in replay buffer
         replay_buffer.add(
@@ -215,7 +216,7 @@ def main():
 
         # Evaluate episode
         if (t + 1) % args.eval_freq == 0:
-            evaluations.append(eval_policy(policy, args.env, args.seed))
+            evaluations.append(eval_policy(policy, env, args.seed))
             if evaluations[-1] > best_reward and args.save_model:
                 policy.save(f"./models/{file_name}")
 
